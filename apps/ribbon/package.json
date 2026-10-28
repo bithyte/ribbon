@@ -2,7 +2,16 @@
   "name": "@bithyte/ribbon",
   "version": "0.1.0",
   "description": "Configurable status line for Claude Code",
+  "homepage": "https://github.com/bithyte/ribbon/tree/main/apps/ribbon#readme",
+  "bugs": {
+    "url": "https://github.com/bithyte/ribbon/issues"
+  },
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bithyte/ribbon.git",
+    "directory": "apps/ribbon"
+  },
   "bin": {
     "ribbon": "dist/cli.mjs"
   },
