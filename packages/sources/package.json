@@ -1,0 +1,20 @@
+{
+  "name": "@ribbon/sources",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vp test"
+  },
+  "dependencies": {
+    "@ribbon/layout": "workspace:*",
+    "@ribbon/render": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}
