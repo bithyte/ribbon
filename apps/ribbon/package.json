@@ -1,6 +1,6 @@
 {
   "name": "@bithyte/ribbon",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Configurable status line for Claude Code",
   "homepage": "https://github.com/bithyte/ribbon/tree/main/apps/ribbon#readme",
   "bugs": {
