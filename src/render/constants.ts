@@ -29,6 +29,28 @@ export const FIVE_HOUR_WINDOW_SECONDS = 18_000;
 export const SEVEN_DAY_WINDOW_SECONDS = 604_800;
 export const HOUR_SECONDS = 3_600;
 export const DAY_SECONDS = 86_400;
+export const PERCENT_SCALE = 100;
+/** Over-pace colors differ so the two windows stay distinguishable side by side. */
+export const FIVE_HOUR_AHEAD_COLOR = RED;
+export const SEVEN_DAY_AHEAD_COLOR = ORANGE;
+/** Labels when no reset time is known; otherwise the countdown plus the unit. */
+export const FIVE_HOUR_LABEL = "5h";
+export const SEVEN_DAY_LABEL = "7d";
+export const HOUR_UNIT = "h";
+export const DAY_UNIT = "d";
+
+export const FILLED_GLYPH = "█";
+export const EMPTY_GLYPH = "░";
+/** Pace tick when usage is at or ahead of the even-spend pace. */
+export const AHEAD_TICK_GLYPH = "▮";
+export const BEHIND_TICK_GLYPH = "▯";
+/** One glyph per eighth of the percentage scale, lowest first. */
+export const GAUGE_GLYPHS = "▁▂▃▄▅▆▇█";
+/** Glyphs for one, two, and three quarters of a countdown unit. */
+export const QUARTER_GLYPHS = "¼½¾";
+export const QUARTERS_PER_UNIT = 4;
+/** Countdown once the reset has arrived; any time left rounds up to at least a quarter. */
+export const RESET_ARRIVED_TEXT = "<1";
 
 export const DEFAULT_MODEL = "Claude";
 /** Text the bash segments treat as missing, since jq prints a JSON null as `null`. */

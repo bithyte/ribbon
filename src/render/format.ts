@@ -1,14 +1,26 @@
 import {
+  AHEAD_TICK_GLYPH,
+  BEHIND_TICK_GLYPH,
   CONTEXT_PERCENT_CRITICAL,
   CONTEXT_PERCENT_ORANGE,
   CONTEXT_PERCENT_WARN,
   DEFAULT_EFFORT_COLOR,
   DEFAULT_MODEL_COLOR,
   EFFORT_COLORS_BY_LEVEL,
+  EMPTY_GLYPH,
+  FILLED_GLYPH,
+  GAUGE_GLYPHS,
   GREEN,
   MODEL_COLORS_BY_FAMILY,
   ORANGE,
+  PACE_TOLERANCE,
+  PERCENT_CRITICAL,
+  PERCENT_SCALE,
+  PERCENT_WARN,
+  QUARTER_GLYPHS,
+  QUARTERS_PER_UNIT,
   RED,
+  RESET_ARRIVED_TEXT,
   TIE_REST_PATTERN,
   TOKENS_PER_MILLION,
   TOKENS_PER_THOUSAND,
@@ -77,6 +89,77 @@ export class RenderFormat {
       return ORANGE;
     }
     return RED;
+  }
+
+  /** Three-band usage severity scale for rate limits without a known pace. */
+  public static percentColor(percent: number): string {
+    if (percent < PERCENT_WARN) {
+      return GREEN;
+    }
+    if (percent < PERCENT_CRITICAL) {
+      return YELLOW;
+    }
+    return RED;
+  }
+
+  /** Green below the even-spend pace, yellow within the tolerance, `aheadColor` above. */
+  public static paceColor(percent: number, elapsedPercent: number, aheadColor: string): string {
+    const difference = percent - elapsedPercent;
+    if (difference < -PACE_TOLERANCE) {
+      return GREEN;
+    }
+    if (difference > PACE_TOLERANCE) {
+      return aheadColor;
+    }
+    return YELLOW;
+  }
+
+  /** `width` cells, filled in proportion to `percent` clamped to 0 through 100. */
+  public static formatBar(percent: number, width: number): string {
+    const filledCount = Math.min(Math.max(Math.trunc((percent * width) / PERCENT_SCALE), 0), width);
+    return `${FILLED_GLYPH.repeat(filledCount)}${EMPTY_GLYPH.repeat(width - filledCount)}`;
+  }
+
+  /** Usage bar with a tick at the even-spend pace, overriding that cell; solid when at or ahead. */
+  public static formatPaceBar(percent: number, elapsedPercent: number, width: number): string {
+    const filledCount = Math.trunc((percent * width) / PERCENT_SCALE);
+    const tickIndex = Math.min(
+      Math.max(Math.trunc((elapsedPercent * width) / PERCENT_SCALE), 0),
+      width - 1,
+    );
+    const tickGlyph = percent >= elapsedPercent ? AHEAD_TICK_GLYPH : BEHIND_TICK_GLYPH;
+    return Array.from({ length: width }, (_value, index) => {
+      if (index === tickIndex) {
+        return tickGlyph;
+      }
+      return index < filledCount ? FILLED_GLYPH : EMPTY_GLYPH;
+    }).join("");
+  }
+
+  /** One of eight block glyphs for `percent` clamped to 0 through 100. */
+  public static formatGauge(percent: number): string {
+    const index = Math.min(
+      Math.max(Math.trunc((percent * GAUGE_GLYPHS.length) / PERCENT_SCALE), 0),
+      GAUGE_GLYPHS.length - 1,
+    );
+    return GAUGE_GLYPHS.charAt(index);
+  }
+
+  /** Time left in `unitSeconds` units, rounded up to a quarter: `¼`, `2½`, `3`; `<1` at zero. */
+  public static formatCountdown(remainingSeconds: number, unitSeconds: number): string {
+    const clampedSeconds = Math.max(remainingSeconds, 0);
+    if (clampedSeconds === 0) {
+      return RESET_ARRIVED_TEXT;
+    }
+    const quarterSeconds = Math.trunc(unitSeconds / QUARTERS_PER_UNIT);
+    const quarterCount = Math.trunc((clampedSeconds + quarterSeconds - 1) / quarterSeconds);
+    const wholeCount = Math.trunc(quarterCount / QUARTERS_PER_UNIT);
+    const fractionIndex = quarterCount % QUARTERS_PER_UNIT;
+    if (fractionIndex === 0) {
+      return String(wholeCount);
+    }
+    const fraction = QUARTER_GLYPHS.charAt(fractionIndex - 1);
+    return wholeCount === 0 ? fraction : `${wholeCount}${fraction}`;
   }
 
   private static formatScaled(value: number): string {

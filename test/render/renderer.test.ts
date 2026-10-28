@@ -90,15 +90,8 @@ test("skips rows where every segment drops out", () => {
 });
 
 test("drops segments implemented in later tasks", () => {
-  const inputs = createInputs({
-    rate_limits: {
-      five_hour: { used_percentage: 30, resets_at: NOW + 9000 },
-      seven_day: { used_percentage: 60, resets_at: NOW + 302_400 },
-    },
-  });
-  const layout = {
-    rows: [[{ type: "fiveHour" }, { type: "sevenDay" }, { type: "git" }]] as const,
-  };
+  const inputs = createInputs({});
+  const layout = { rows: [[{ type: "git" }]] as const };
   assert.equal(Renderer.render(layout, { ...inputs, gitStatus: "# branch.head main\n" }), "");
 });
 

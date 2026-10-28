@@ -1,14 +1,28 @@
 import type { Segment } from "../layout/index.ts";
 import {
+  BAR_WIDTH,
   BOLD_RED,
   CYAN,
+  DAY_SECONDS,
+  DAY_UNIT,
   DESPERATE_EMOTION,
   DESPERATE_TEXT,
   DIM,
   EMOTION_COLORS_BY_NAME,
   EMOTION_MAX_AGE_SECONDS,
+  FIVE_HOUR_AHEAD_COLOR,
+  FIVE_HOUR_LABEL,
+  FIVE_HOUR_WINDOW_SECONDS,
   GREEN,
+  HOUR_SECONDS,
+  HOUR_UNIT,
+  PACE_TOLERANCE,
+  PERCENT_SCALE,
   RESET,
+  SEVEN_DAY_AHEAD_COLOR,
+  SEVEN_DAY_BAR_WIDTH,
+  SEVEN_DAY_LABEL,
+  SEVEN_DAY_WINDOW_SECONDS,
 } from "./constants.ts";
 import { RenderFormat } from "./format.ts";
 import type { RenderInputs } from "./types.ts";
@@ -35,9 +49,11 @@ export class RenderSegments {
         return RenderSegments.renderEmotion(inputs);
       case "run":
         return RenderSegments.renderRun(segment.command, inputs);
-      case "git":
       case "fiveHour":
+        return RenderSegments.renderFiveHour(inputs);
       case "sevenDay":
+        return RenderSegments.renderSevenDay(inputs);
+      case "git":
         // Not ported yet.
         return undefined;
     }
@@ -105,8 +121,74 @@ export class RenderSegments {
     return color === undefined ? emotion.name : `${color}${emotion.name}${RESET}`;
   }
 
+  private static renderFiveHour(inputs: RenderInputs): string | undefined {
+    const { fiveHourPercent, fiveHourResetsAt } = inputs.payload;
+    if (fiveHourPercent === undefined) {
+      return undefined;
+    }
+    const percent = RenderFormat.roundToInteger(fiveHourPercent);
+    if (fiveHourResetsAt === undefined) {
+      return RenderSegments.formatUsage(
+        FIVE_HOUR_LABEL,
+        RenderFormat.percentColor(percent),
+        RenderFormat.formatBar(percent, BAR_WIDTH),
+      );
+    }
+    const remainingSeconds = fiveHourResetsAt - inputs.nowSeconds;
+    const elapsedPercent = RenderSegments.toElapsedPercent(
+      remainingSeconds,
+      FIVE_HOUR_WINDOW_SECONDS,
+    );
+    return RenderSegments.formatUsage(
+      `${RenderFormat.formatCountdown(remainingSeconds, HOUR_SECONDS)}${HOUR_UNIT}`,
+      RenderFormat.paceColor(percent, elapsedPercent, FIVE_HOUR_AHEAD_COLOR),
+      RenderFormat.formatPaceBar(percent, elapsedPercent, BAR_WIDTH),
+    );
+  }
+
+  // A compact gauge by default; expands into a pace bar only when over pace, the one case
+  // worth flagging.
+  private static renderSevenDay(inputs: RenderInputs): string | undefined {
+    const { sevenDayPercent, sevenDayResetsAt } = inputs.payload;
+    if (sevenDayPercent === undefined) {
+      return undefined;
+    }
+    const percent = RenderFormat.roundToInteger(sevenDayPercent);
+    if (sevenDayResetsAt === undefined) {
+      return RenderSegments.formatUsage(
+        SEVEN_DAY_LABEL,
+        RenderFormat.percentColor(percent),
+        RenderFormat.formatGauge(percent),
+      );
+    }
+    const remainingSeconds = sevenDayResetsAt - inputs.nowSeconds;
+    const elapsedPercent = RenderSegments.toElapsedPercent(
+      remainingSeconds,
+      SEVEN_DAY_WINDOW_SECONDS,
+    );
+    const usage =
+      percent - elapsedPercent > PACE_TOLERANCE
+        ? RenderFormat.formatPaceBar(percent, elapsedPercent, SEVEN_DAY_BAR_WIDTH)
+        : RenderFormat.formatGauge(percent);
+    return RenderSegments.formatUsage(
+      `${RenderFormat.formatCountdown(remainingSeconds, DAY_SECONDS)}${DAY_UNIT}`,
+      RenderFormat.paceColor(percent, elapsedPercent, SEVEN_DAY_AHEAD_COLOR),
+      usage,
+    );
+  }
+
   private static renderRun(command: string, inputs: RenderInputs): string | undefined {
     const output = inputs.runOutputsByCommand.get(command);
     return output === "" ? undefined : output;
+  }
+
+  private static formatUsage(label: string, color: string, usage: string): string {
+    return `${DIM}${label}${RESET} ${color}${usage}${RESET}`;
+  }
+
+  /** Share of the window already elapsed, from 0 through 100. */
+  private static toElapsedPercent(remainingSeconds: number, windowSeconds: number): number {
+    const clampedSeconds = Math.min(Math.max(remainingSeconds, 0), windowSeconds);
+    return Math.trunc(((windowSeconds - clampedSeconds) * PERCENT_SCALE) / windowSeconds);
   }
 }
