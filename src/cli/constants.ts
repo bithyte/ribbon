@@ -28,3 +28,11 @@ export const CLAUDE_DIRECTORY_NAME = ".claude";
 export const UNIX_TIMESTAMP_PATTERN = /^\d+$/;
 
 export const MS_PER_SECOND = 1_000;
+
+/** An answer of `y` or `yes`, any case, confirms; everything else declines. */
+export const YES_ANSWER_PATTERN = /^y(es)?$/i;
+
+/** `RIBBON_INSTALL_TTY` value that forces prompting; `"0"` forbids it. Unset falls back to `stdin.isTTY`. */
+export const INSTALL_TTY_ON = "1";
+
+export const INSTALL_TTY_OFF = "0";
