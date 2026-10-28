@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { LayoutParser } from "../../src/layout/index.ts";
 
+const BYTE_ORDER_MARK = "﻿";
+
 function assertInvalid(value: unknown, message: string): void {
   assert.deepEqual(LayoutParser.parse(JSON.stringify(value)), { kind: "invalid", message });
 }
@@ -32,6 +34,14 @@ test("validates already-parsed values", () => {
   assert.deepEqual(LayoutParser.validate({ rows: [[{ type: "git" }]] }), {
     kind: "parsed",
     layout: { rows: [[{ type: "git" }]] },
+  });
+});
+
+test("ignores a leading byte order mark", () => {
+  const text = `${BYTE_ORDER_MARK}${JSON.stringify({ rows: [[{ type: "model" }]] })}`;
+  assert.deepEqual(LayoutParser.parse(text), {
+    kind: "parsed",
+    layout: { rows: [[{ type: "model" }]] },
   });
 });
 

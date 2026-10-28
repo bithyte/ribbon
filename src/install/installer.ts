@@ -1,6 +1,12 @@
 import { join } from "node:path";
 import { DEFAULT_LAYOUT, LAYOUT_FILE_NAME, LayoutParser } from "../layout/index.ts";
-import { BACKUP_SUFFIX, MISSING_FILE, RIBBON_COMMAND, SETTINGS_FILE_NAME } from "./constants.ts";
+import {
+  BACKUP_SUFFIX,
+  BYTE_ORDER_MARK,
+  MISSING_FILE,
+  RIBBON_COMMAND,
+  SETTINGS_FILE_NAME,
+} from "./constants.ts";
 import { InstallPlanner } from "./planner.ts";
 import { JsonFileStore } from "./store.ts";
 import type {
@@ -100,7 +106,9 @@ export class Installer {
         return {
           kind: "foreign",
           lines: [
-            `statusLine in ${this.settingsPath} runs ${JSON.stringify(decision.command)}, not ribbon; left unchanged`,
+            decision.command === undefined
+              ? `statusLine in ${this.settingsPath} is not ribbon; left unchanged`
+              : `statusLine in ${this.settingsPath} runs ${JSON.stringify(decision.command)}, not ribbon; left unchanged`,
           ],
         };
       case "remove":
@@ -140,7 +148,9 @@ export class Installer {
 
   private static parseJson(text: string, context: string): unknown {
     try {
-      return JSON.parse(text);
+      return JSON.parse(
+        text.startsWith(BYTE_ORDER_MARK) ? text.slice(BYTE_ORDER_MARK.length) : text,
+      );
     } catch (error) {
       throw new Error(`${context}: ${error instanceof Error ? error.message : String(error)}`);
     }

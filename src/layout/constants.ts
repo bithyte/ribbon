@@ -2,6 +2,9 @@ import type { BuiltinSegmentType, Layout } from "./types.ts";
 
 export const LAYOUT_FILE_NAME = "ribbon.json";
 
+/** Some editors prefix saved JSON with one; `JSON.parse` rejects it. */
+export const BYTE_ORDER_MARK = "\uFEFF";
+
 export const BUILTIN_SEGMENT_TYPES: readonly BuiltinSegmentType[] = [
   "title",
   "git",

@@ -29,6 +29,9 @@ export const UNIX_TIMESTAMP_PATTERN = /^\d+$/;
 
 export const MS_PER_SECOND = 1_000;
 
+/** Line breaks with their surrounding space; render errors collapse them so the status line stays one line. */
+export const LINE_BREAK_PATTERN = /\s*\n\s*/g;
+
 /** An answer of `y` or `yes`, any case, confirms; everything else declines. */
 export const YES_ANSWER_PATTERN = /^y(es)?$/i;
 

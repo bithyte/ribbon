@@ -4,6 +4,7 @@ import {
   REFRESH_INTERVAL_SECONDS,
   REMOVE,
   RIBBON_COMMAND,
+  RIBBON_RENDER_COMMAND_PATTERN,
   STATUS_LINE,
   STATUS_LINE_KEY,
   STATUS_LINE_TYPE,
@@ -22,12 +23,10 @@ export class InstallPlanner {
     }
     const statusLine = settings[STATUS_LINE_KEY];
     if (!InstallPlanner.isRibbonStatusLine(statusLine)) {
-      const command = InstallPlanner.findCommand(statusLine);
       return {
         kind: "replace",
         previous: statusLine,
-        // A blank command can't become a valid run segment, so there's nothing to keep.
-        previousCommand: command === undefined || command.trim() === "" ? undefined : command,
+        previousCommand: InstallPlanner.findKeepableCommand(statusLine),
       };
     }
     return statusLine["type"] === STATUS_LINE_TYPE &&
@@ -79,6 +78,20 @@ export class InstallPlanner {
 
   private static isRibbonStatusLine(value: unknown): value is JsonObject {
     return InstallPlanner.findCommand(value)?.trim() === RIBBON_COMMAND;
+  }
+
+  // A blank command can't become a valid run segment, and one that runs ribbon render
+  // would make every render spawn another, so neither is offered for keeping.
+  private static findKeepableCommand(statusLine: unknown): string | undefined {
+    const command = InstallPlanner.findCommand(statusLine);
+    if (
+      command === undefined ||
+      command.trim() === "" ||
+      RIBBON_RENDER_COMMAND_PATTERN.test(command)
+    ) {
+      return undefined;
+    }
+    return command;
   }
 
   private static findCommand(statusLine: unknown): string | undefined {

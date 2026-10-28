@@ -6,13 +6,14 @@ import { parseArgs } from "node:util";
 import { Installer, type InstallResult } from "../install/index.ts";
 import { LAYOUT_FILE_NAME, LayoutStore } from "../layout/index.ts";
 import { PayloadParser, Renderer } from "../render/index.ts";
-import { RenderSources } from "../sources/index.ts";
+import { NESTED_RENDER_VARIABLE, RenderSources } from "../sources/index.ts";
 import {
   CLAUDE_DIRECTORY_NAME,
   CLI_OPTIONS,
   HELP_TEXT,
   INSTALL_TTY_OFF,
   INSTALL_TTY_ON,
+  LINE_BREAK_PATTERN,
   MS_PER_SECOND,
   UNIX_TIMESTAMP_PATTERN,
   USAGE,
@@ -24,7 +25,8 @@ class RibbonCli {
   private constructor() {}
 
   public static async run(args: readonly string[]): Promise<number> {
-    let command: string | undefined;
+    // Known before parsing options, so a bad render option still reaches the status line.
+    let command = args[0];
     try {
       const { values, positionals } = parseArgs({
         args: [...args],
@@ -41,7 +43,7 @@ class RibbonCli {
       const message = error instanceof Error ? error.message : String(error);
       // Claude Code shows a status line command's stdout, never its stderr.
       if (command === "render") {
-        process.stdout.write(`ribbon: ${message}\n`);
+        process.stdout.write(`ribbon: ${message.replace(LINE_BREAK_PATTERN, " ")}\n`);
         return 0;
       }
       process.stderr.write(`ribbon: ${message}\n`);
@@ -68,6 +70,7 @@ class RibbonCli {
   private static async render(): Promise<number> {
     const nowSeconds = RibbonCli.resolveNowSeconds(process.env["RIBBON_NOW"]);
     const configDir = RibbonCli.resolveConfigDir(process.env["CLAUDE_CONFIG_DIR"]);
+    const isRunDisabled = RibbonCli.isNestedRender(process.env[NESTED_RENDER_VARIABLE]);
     const layoutPath = join(configDir, LAYOUT_FILE_NAME);
     const payloadText = await text(process.stdin);
     const result = await LayoutStore.load(layoutPath);
@@ -75,10 +78,13 @@ class RibbonCli {
       throw new Error(`config ${JSON.stringify(layoutPath)}: ${result.message}`);
     }
     const payload = PayloadParser.parse(payloadText);
-    const inputs = await RenderSources.gather(result.layout, payload, payloadText, {
-      configDir,
-      nowSeconds,
-    });
+    const inputs = await RenderSources.gather(
+      result.layout,
+      payload,
+      payloadText,
+      { configDir, nowSeconds },
+      { isRunDisabled },
+    );
     process.stdout.write(Renderer.render(result.layout, inputs));
     return 0;
   }
@@ -133,6 +139,11 @@ class RibbonCli {
       return false;
     }
     return process.stdin.isTTY === true;
+  }
+
+  // Set by ribbon's own runner: a render inside a `run` segment must not run segments again.
+  private static isNestedRender(rawNestedRender: string | undefined): boolean {
+    return rawNestedRender !== undefined && rawNestedRender !== "";
   }
 
   private static formatLines(lines: readonly string[]): string {

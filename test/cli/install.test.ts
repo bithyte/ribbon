@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  readlink,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test, { type TestContext } from "node:test";
@@ -26,6 +38,12 @@ const FOREIGN_STATUS_LINE = { type: "command", command: "other-status --x" };
 const FOREIGN_RUN_ROW = [{ type: "run", command: "other-status --x" }];
 const INTERACTIVE_ENV = { RIBBON_INSTALL_TTY: "1" };
 const NON_INTERACTIVE_ENV = { RIBBON_INSTALL_TTY: "0" };
+const RIBBON_RENDER_COMMANDS = [
+  "npx -y @bithyte/ribbon render",
+  "/abs/path/ribbon render --x",
+  "ribbon  render",
+];
+const BYTE_ORDER_MARK = "\uFEFF";
 
 async function createPaths(t: TestContext): Promise<InstallPaths> {
   const home = await mkdtemp(join(tmpdir(), "ribbon-install-"));
@@ -288,6 +306,53 @@ test("a command already in the layout is not asked about or added twice", async 
   assert.deepEqual(await readJson(paths.settingsPath), { statusLine: STATUS_LINE });
 });
 
+test("--yes replaces a command that runs ribbon render without keeping it", async (t) => {
+  for (const command of RIBBON_RENDER_COMMANDS) {
+    const paths = await createPaths(t);
+    await writeJson(paths.settingsPath, { statusLine: { type: "command", command } });
+    const settingsBefore = await readFile(paths.settingsPath, "utf8");
+    const result = runRibbon(paths.home, ["install", "--yes"], { env: NON_INTERACTIVE_ENV });
+    assert.deepEqual(result, {
+      status: 0,
+      stdout:
+        `created ${paths.layoutPath}\n` +
+        `backed up ${paths.settingsPath} to ${paths.backupPath}\n` +
+        `installed ribbon in ${paths.settingsPath}\n`,
+      stderr: "",
+    });
+    assert.deepEqual(await readJson(paths.layoutPath), { rows: DEFAULT_LAYOUT.rows });
+    assert.equal(await readFile(paths.backupPath, "utf8"), settingsBefore);
+    assert.deepEqual(await readJson(paths.settingsPath), { statusLine: STATUS_LINE });
+  }
+});
+
+test("a command that runs ribbon render is not offered as a run segment", async (t) => {
+  const paths = await createPaths(t);
+  const statusLine = { type: "command", command: "npx -y @bithyte/ribbon render" };
+  await writeJson(paths.settingsPath, { statusLine });
+  const result = runRibbon(paths.home, ["install"], { stdin: "y\ny\n", env: INTERACTIVE_ENV });
+  assert.deepEqual(result, {
+    status: 0,
+    stdout:
+      `statusLine in ${paths.settingsPath} is ${JSON.stringify(statusLine)}\n` +
+      `replace it with "ribbon render"? [y/N] ` +
+      `created ${paths.layoutPath}\n` +
+      `backed up ${paths.settingsPath} to ${paths.backupPath}\n` +
+      `installed ribbon in ${paths.settingsPath}\n`,
+    stderr: "",
+  });
+  assert.deepEqual(await readJson(paths.layoutPath), { rows: DEFAULT_LAYOUT.rows });
+});
+
+test("settings with a byte order mark are read", async (t) => {
+  const paths = await createPaths(t);
+  await mkdir(paths.configDir, { recursive: true });
+  await writeFile(paths.settingsPath, `${BYTE_ORDER_MARK}${JSON.stringify({ model: "opus" })}`);
+  const result = runRibbon(paths.home, ["install"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(await readJson(paths.settingsPath), { model: "opus", statusLine: STATUS_LINE });
+});
+
 test("invalid settings json is refused before writing anything", async (t) => {
   const cases = [
     { text: "{", problem: "is not valid json: " },
@@ -375,6 +440,19 @@ test("uninstall leaves a foreign status line alone", async (t) => {
   assert.equal(await readFile(paths.settingsPath, "utf8"), settingsBefore);
 });
 
+test("uninstall leaves a status line without a command alone", async (t) => {
+  const paths = await createPaths(t);
+  await writeJson(paths.settingsPath, { statusLine: { type: "command" } });
+  const settingsBefore = await readFile(paths.settingsPath, "utf8");
+  const result = runRibbon(paths.home, ["uninstall"]);
+  assert.deepEqual(result, {
+    status: 0,
+    stdout: `statusLine in ${paths.settingsPath} is not ribbon; left unchanged\n`,
+    stderr: "",
+  });
+  assert.equal(await readFile(paths.settingsPath, "utf8"), settingsBefore);
+});
+
 test("uninstall without settings reports not installed", async (t) => {
   const paths = await createPaths(t);
   const result = runRibbon(paths.home, ["uninstall"]);
@@ -394,4 +472,38 @@ test("settings are written atomically with no stray temp files", async (t) => {
   assert.equal(result.status, 0);
   assert.deepEqual((await readdir(paths.configDir)).toSorted(), ["ribbon.json", "settings.json"]);
   assert.notEqual((await stat(paths.settingsPath)).ino, inodeBefore);
+});
+
+test("install keeps the settings file mode", async (t) => {
+  const paths = await createPaths(t);
+  await writeJson(paths.settingsPath, { model: "opus" });
+  await chmod(paths.settingsPath, 0o600);
+  const result = runRibbon(paths.home, ["install"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal((await stat(paths.settingsPath)).mode & 0o777, 0o600);
+  assert.deepEqual(await readJson(paths.settingsPath), { model: "opus", statusLine: STATUS_LINE });
+});
+
+test("a symlinked settings file stays a symlink and its target is updated", async (t) => {
+  const paths = await createPaths(t);
+  const targetDirectory = join(paths.home, "dotfiles");
+  const targetPath = join(targetDirectory, "settings.json");
+  await writeJson(targetPath, { model: "opus" });
+  await chmod(targetPath, 0o640);
+  await mkdir(paths.configDir, { recursive: true });
+  await symlink(targetPath, paths.settingsPath);
+  const expectedSettingsByCommand = new Map([
+    ["install", { model: "opus", statusLine: STATUS_LINE }],
+    ["uninstall", { model: "opus" }],
+  ]);
+  for (const [command, expectedSettings] of expectedSettingsByCommand) {
+    const result = runRibbon(paths.home, [command]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal((await lstat(paths.settingsPath)).isSymbolicLink(), true);
+    assert.equal(await readlink(paths.settingsPath), targetPath);
+    assert.equal((await stat(targetPath)).mode & 0o777, 0o640);
+    assert.deepEqual((await readdir(targetDirectory)).toSorted(), ["settings.json"]);
+    assert.deepEqual((await readdir(paths.configDir)).toSorted(), ["ribbon.json", "settings.json"]);
+    assert.deepEqual(await readJson(targetPath), expectedSettings);
+  }
 });

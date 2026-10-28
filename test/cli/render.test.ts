@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { type TestContext } from "node:test";
@@ -24,6 +24,10 @@ const YELLOW = "\x1b[33m";
 const MAGENTA = "\x1b[35m";
 const SEPARATOR = `${DIM} | ${RESET}`;
 const DEFAULT_MODEL_LINE = `${CYAN}Claude${RESET}\n`;
+const BYTE_ORDER_MARK = "\uFEFF";
+const MANY_FILE_COUNT = 6_000;
+const LONG_NAME_LENGTH = 200;
+const GIT_MAX_BUFFER_BYTES = 64 * 1_024 * 1_024;
 const GIT_ENV = {
   GIT_CONFIG_GLOBAL: "/dev/null",
   GIT_CONFIG_SYSTEM: "/dev/null",
@@ -101,6 +105,7 @@ async function copyConfigFixture(home: string, name: string): Promise<string> {
 function git(repo: string, ...args: readonly string[]): string {
   const result = spawnSync("git", ["-C", repo, ...args], {
     encoding: "utf8",
+    maxBuffer: GIT_MAX_BUFFER_BYTES,
     env: { PATH: process.env["PATH"], ...GIT_ENV },
   });
   assert.equal(result.status, 0, result.stderr);
@@ -189,6 +194,22 @@ test("renders a detached head", async (t) => {
   assert.deepEqual(renderRepo(home, repo), expectRepoLine(`${GREEN}detached@${sha} ✓${RESET}`));
 });
 
+test("renders counts when git status is larger than a megabyte", async (t) => {
+  const home = await createHome(t);
+  const repo = await createRepo(home);
+  git(repo, "commit", "-q", "--allow-empty", "-m", "init");
+  const names = Array.from(
+    { length: MANY_FILE_COUNT },
+    (_, index) => `${String(index).padStart(5, "0")}${"x".repeat(LONG_NAME_LENGTH)}`,
+  );
+  await Promise.all(names.map((name) => writeFile(join(repo, name), "")));
+  assert.ok(git(repo, "status", "--porcelain=v2").length > 1_048_576);
+  assert.deepEqual(
+    renderRepo(home, repo),
+    expectRepoLine(`${YELLOW}main ✗${RESET} ${DIM}?${MANY_FILE_COUNT}${RESET}`),
+  );
+});
+
 test("follows a custom layout order", async (t) => {
   const home = await createHome(t);
   await writeLayout(home, { rows: [[{ type: "cost" }, { type: "model" }]] });
@@ -211,6 +232,41 @@ test("renders a run segment from the layout", async (t) => {
   });
 });
 
+test("a run segment that calls ribbon render does not recurse", async (t) => {
+  const home = await createHome(t);
+  const countPath = join(home, "count");
+  const command = `echo x >> ${countPath}; ${process.execPath} ${CLI_PATH} render`;
+  await writeLayout(home, { rows: [[{ type: "model" }], [{ type: "run", command }]] });
+  const result = runRibbon(home, ["render"], { stdin: "{}" });
+  assert.deepEqual(result, {
+    status: 0,
+    stdout: `${DEFAULT_MODEL_LINE}${CYAN}Claude${RESET}\n`,
+    stderr: "",
+  });
+  assert.equal(await readFile(countPath, "utf8"), "x\n");
+});
+
+test("render under RIBBON_RENDER drops run segments without running them", async (t) => {
+  const home = await createHome(t);
+  const markerPath = join(home, "ran");
+  await writeLayout(home, {
+    rows: [[{ type: "model" }, { type: "run", command: `touch ${markerPath}; printf hi` }]],
+  });
+  const result = runRibbon(home, ["render"], { stdin: "{}", env: { RIBBON_RENDER: "1" } });
+  assert.deepEqual(result, { status: 0, stdout: DEFAULT_MODEL_LINE, stderr: "" });
+  assert.deepEqual((await readdir(home)).toSorted(), ["claude"]);
+});
+
+test("a layout with a byte order mark renders", async (t) => {
+  const home = await createHome(t);
+  await writeLayout(home, `${BYTE_ORDER_MARK}${JSON.stringify({ rows: [[{ type: "model" }]] })}`);
+  assert.deepEqual(runRibbon(home, ["render"], { stdin: "{}" }), {
+    status: 0,
+    stdout: DEFAULT_MODEL_LINE,
+    stderr: "",
+  });
+});
+
 test("help prints usage", async (t) => {
   const home = await createHome(t);
   const result = runRibbon(home, ["--help"]);
@@ -229,6 +285,16 @@ test("invalid layout is shown as the status line", async (t) => {
   assert.equal(result.stderr, "");
 });
 
+test("a multi-line invalid layout is reported on one line", async (t) => {
+  const home = await createHome(t);
+  const path = await writeLayout(home, '{\n  "rows": [\n    [{ "type": "model" },]\n  ]\n}\n');
+  const result = runRibbon(home, ["render"], { stdin: "{}" });
+  assert.equal(result.status, 0);
+  assert.ok(result.stdout.startsWith(`ribbon: config "${path}": not valid json: `), result.stdout);
+  assert.equal(result.stdout.indexOf("\n"), result.stdout.length - 1, result.stdout);
+  assert.equal(result.stderr, "");
+});
+
 test("invalid RIBBON_NOW is shown as the status line", async (t) => {
   const home = await createHome(t);
   const result = runRibbon(home, ["render"], { stdin: "{}", env: { RIBBON_NOW: "soon" } });
@@ -237,6 +303,16 @@ test("invalid RIBBON_NOW is shown as the status line", async (t) => {
     stdout: 'ribbon: RIBBON_NOW "soon" is not a unix timestamp\n',
     stderr: "",
   });
+});
+
+test("an unknown render option is shown as the status line", async (t) => {
+  const home = await createHome(t);
+  const result = runRibbon(home, ["render", "--bogus"], { stdin: "{}" });
+  assert.equal(result.status, 0);
+  assert.ok(result.stdout.startsWith("ribbon: "), result.stdout);
+  assert.ok(result.stdout.includes("--bogus"), result.stdout);
+  assert.equal(result.stdout.indexOf("\n"), result.stdout.length - 1, result.stdout);
+  assert.equal(result.stderr, "");
 });
 
 test("unknown command fails", async (t) => {

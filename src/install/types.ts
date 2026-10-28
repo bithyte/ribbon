@@ -6,7 +6,7 @@ export type InstallDecision =
   | { readonly kind: "alreadyInstalled" }
   /** No `statusLine`, or ribbon's command with a stale `type` or `refreshInterval`; no prompt needed. */
   | { readonly kind: "update" }
-  /** A foreign `statusLine`; `previousCommand` is its `command` when that's a non-blank string. */
+  /** A foreign `statusLine`; `previousCommand` is its `command` when that's a non-blank string that doesn't run ribbon render. */
   | {
       readonly kind: "replace";
       readonly previous: unknown;

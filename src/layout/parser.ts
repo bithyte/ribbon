@@ -1,4 +1,4 @@
-import { BUILTIN_SEGMENT_TYPES } from "./constants.ts";
+import { BUILTIN_SEGMENT_TYPES, BYTE_ORDER_MARK } from "./constants.ts";
 import type { BuiltinSegmentType, LayoutParseResult, PlainObject, Segment } from "./types.ts";
 
 type SegmentOutcome =
@@ -12,7 +12,9 @@ export class LayoutParser {
   public static parse(text: string): LayoutParseResult {
     let value: unknown;
     try {
-      value = JSON.parse(text);
+      value = JSON.parse(
+        text.startsWith(BYTE_ORDER_MARK) ? text.slice(BYTE_ORDER_MARK.length) : text,
+      );
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       return { kind: "invalid", message: `not valid json: ${reason}` };
