@@ -182,8 +182,7 @@ export class RenderSegments {
   }
 
   private static renderRun(command: string, inputs: RenderInputs): string | undefined {
-    const output = inputs.runOutputsByCommand.get(command);
-    return output === "" ? undefined : output;
+    return inputs.runOutputsByCommand.get(command);
   }
 
   private static formatUsage(label: string, color: string, usage: string): string {

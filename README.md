@@ -84,8 +84,10 @@ An invalid file is reported as an error rather than silently ignored. Add a row 
 `{ "type": "run", "command": "..." }` runs the command with `/bin/sh -c`.
 
 - The Claude Code payload is passed on its stdin.
-- Only the first line of stdout is used (trailing whitespace trimmed).
+- Only the first line of stdout is used (trailing whitespace trimmed, cut at 64 KiB).
 - It gets 500ms; after that the process group is killed.
+- It runs with `RIBBON_RENDER=1` set. A `ribbon render` that sees it skips its own run
+  segments, so a run segment that calls ribbon can't recurse.
 - Empty output, a non-zero exit, a timeout or a failure to spawn all drop the segment silently.
 
 ## Development

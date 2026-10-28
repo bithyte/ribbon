@@ -9,7 +9,7 @@ import type { SourceContext, SourceOptions } from "./types.ts";
 export class RenderSources {
   private constructor() {}
 
-  /** Reads only the sources the layout's segments use; each distinct `run` command runs once. Never throws. */
+  /** Reads only the sources the layout's segments use; each distinct `run` command runs once, none when runs are disabled. Never throws. */
   public static async gather(
     layout: Layout,
     payload: Payload,
@@ -19,8 +19,9 @@ export class RenderSources {
   ): Promise<RenderInputs> {
     const runTimeoutMs = options.runTimeoutMs ?? DEFAULT_SOURCE_OPTIONS.runTimeoutMs;
     const gitTimeoutMs = options.gitTimeoutMs ?? DEFAULT_SOURCE_OPTIONS.gitTimeoutMs;
+    const isRunDisabled = options.isRunDisabled ?? DEFAULT_SOURCE_OPTIONS.isRunDisabled;
     const segments = layout.rows.flat();
-    const commands = [...new Set(segments.flatMap(RenderSources.toCommands))];
+    const commands = isRunDisabled ? [] : [...new Set(segments.flatMap(RenderSources.toCommands))];
     const [gitStatus, emotion, email, runOutputs] = await Promise.all([
       RenderSources.gatherGitStatus(segments, payload.cwd, gitTimeoutMs),
       RenderSources.gatherEmotion(segments, context.configDir, payload.sessionId),

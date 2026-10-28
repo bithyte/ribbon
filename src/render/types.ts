@@ -44,7 +44,7 @@ export type RenderInputs = {
   readonly emotion: EmotionCache | undefined;
   /** Logged-in account email. */
   readonly email: string | undefined;
-  /** Output of each `run` segment command, `undefined` when it failed. */
+  /** Output of each `run` segment command, never `""`; `undefined` when it failed or printed nothing. */
   readonly runOutputsByCommand: ReadonlyMap<string, string | undefined>;
 };
 

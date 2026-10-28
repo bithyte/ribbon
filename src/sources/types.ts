@@ -6,11 +6,13 @@ export type SourceContext = {
   readonly nowSeconds: number;
 };
 
-/** Timeouts for the external processes a render waits on. */
+/** Limits on the external processes a render waits on. */
 export type SourceOptions = {
   /** Per `run` command; the whole process group is killed when it expires. */
   readonly runTimeoutMs?: number;
   readonly gitTimeoutMs?: number;
+  /** Skips every `run` segment without running it, so a render nested in a `run` can't recurse. */
+  readonly isRunDisabled?: boolean;
 };
 
 type PlainObject = Readonly<Record<string, unknown>>;

@@ -10,8 +10,10 @@ import {
   EMOTION_SESSION_FILE_PREFIX,
   EMOTION_SESSION_FILE_SUFFIX,
   GIT_COMMAND,
+  GIT_MAX_BUFFER_BYTES,
   GIT_STATUS_ARGUMENTS,
   MS_PER_SECOND,
+  SESSION_ID_PATTERN,
 } from "./constants.ts";
 import type { PlainObject } from "./types.ts";
 
@@ -27,6 +29,7 @@ export class SourceFiles {
     try {
       ({ stdout } = await execFileAsync(GIT_COMMAND, ["-C", cwd, ...GIT_STATUS_ARGUMENTS], {
         timeout: timeoutMs,
+        maxBuffer: GIT_MAX_BUFFER_BYTES,
         encoding: "utf8",
       }));
     } catch {
@@ -50,14 +53,14 @@ export class SourceFiles {
     return typeof email === "string" && email !== "" ? email : undefined;
   }
 
-  /** The session emotion cache when it exists, else the global one. Freshness is left to render. Never throws. */
+  /** The session emotion cache when it exists and the id is a plain name, else the global one. Freshness is left to render. Never throws. */
   public static async readEmotion(
     configDir: string,
     sessionId: string | undefined,
   ): Promise<EmotionCache | undefined> {
     const cacheDirectory = join(configDir, CACHE_DIRECTORY_NAME);
     const sessionHandle =
-      sessionId === undefined
+      sessionId === undefined || !SESSION_ID_PATTERN.test(sessionId)
         ? undefined
         : await SourceFiles.findHandle(
             join(

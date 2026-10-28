@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { type TestContext } from "node:test";
@@ -14,6 +14,12 @@ const EMOTION_MODIFIED_SECONDS = 1_700_000_000;
 const EMPTY_PAYLOAD = PayloadParser.parse("{}");
 const EXIT_POLL_DEADLINE_MS = 1_000;
 const EXIT_POLL_INTERVAL_MS = 10;
+const RUN_TIMEOUT_MS = 5_000;
+const GIT_ENV = {
+  PATH: process.env["PATH"],
+  GIT_CONFIG_GLOBAL: "/dev/null",
+  GIT_CONFIG_SYSTEM: "/dev/null",
+};
 
 function layoutOf(...segments: readonly Segment[]): Layout {
   return { rows: [segments] };
@@ -27,7 +33,9 @@ async function createDirectory(t: TestContext): Promise<string> {
 
 async function createGitRepo(t: TestContext): Promise<string> {
   const directory = await createDirectory(t);
-  const result = spawnSync("git", ["-c", "init.defaultBranch=main", "init", "-q", directory]);
+  const result = spawnSync("git", ["-c", "init.defaultBranch=main", "init", "-q", directory], {
+    env: GIT_ENV,
+  });
   assert.equal(result.status, 0);
   return directory;
 }
@@ -51,7 +59,10 @@ async function gather(
 }
 
 async function gatherRun(command: string, payloadText?: string): Promise<string | undefined> {
-  const inputs = await gather(layoutOf({ type: "run", command }), { payloadText });
+  const inputs = await gather(layoutOf({ type: "run", command }), {
+    payloadText,
+    sourceOptions: { runTimeoutMs: RUN_TIMEOUT_MS },
+  });
   return inputs.runOutputsByCommand.get(command);
 }
 
@@ -82,7 +93,10 @@ async function waitForExit(pid: number): Promise<boolean> {
 
 test("gathers run output from the first stdout line", async () => {
   const command = "printf 'a\\nb'";
-  assert.deepEqual(await gather(layoutOf({ type: "run", command })), {
+  const inputs = await gather(layoutOf({ type: "run", command }), {
+    sourceOptions: { runTimeoutMs: RUN_TIMEOUT_MS },
+  });
+  assert.deepEqual(inputs, {
     payload: EMPTY_PAYLOAD,
     nowSeconds: NOW,
     gitStatus: undefined,
@@ -98,6 +112,44 @@ test("run commands receive the payload on stdin", async () => {
 
 test("run output keeps ansi codes and trims trailing space", async () => {
   assert.equal(await gatherRun("printf '\\033[31mred\\033[0m  '"), "\x1b[31mred\x1b[0m");
+});
+
+test("run commands see RIBBON_RENDER so a nested ribbon skips its own run segments", async () => {
+  assert.equal(await gatherRun('printf "%s" "$RIBBON_RENDER"'), "1");
+});
+
+test("run segments are skipped without running when runs are disabled", async (t) => {
+  const directory = await createDirectory(t);
+  const markerPath = join(directory, "ran");
+  const command = `touch ${markerPath}; printf hi`;
+  const inputs = await gather(layoutOf({ type: "run", command }), {
+    sourceOptions: { runTimeoutMs: RUN_TIMEOUT_MS, isRunDisabled: true },
+  });
+  assert.deepEqual(inputs.runOutputsByCommand, new Map());
+  assert.deepEqual(await readdir(directory), []);
+});
+
+test("endless run output is drained until the timeout", async () => {
+  const start = performance.now();
+  const inputs = await gather(layoutOf({ type: "run", command: "yes" }), {
+    sourceOptions: { runTimeoutMs: 300 },
+  });
+  assert.ok(performance.now() - start < 1_500);
+  assert.deepEqual(inputs.runOutputsByCommand, new Map([["yes", undefined]]));
+});
+
+test("huge run output keeps only the first line", async () => {
+  const command = "yes | head -c 300000000; exit 0";
+  const start = performance.now();
+  const inputs = await gather(layoutOf({ type: "run", command }), {
+    sourceOptions: { runTimeoutMs: RUN_TIMEOUT_MS },
+  });
+  assert.ok(performance.now() - start < RUN_TIMEOUT_MS);
+  assert.deepEqual(inputs.runOutputsByCommand, new Map([[command, "y"]]));
+});
+
+test("a first line longer than the cap is cut to 64 KiB", async () => {
+  assert.equal(await gatherRun("head -c 100000 /dev/zero | tr '\\0' x"), "x".repeat(65_536));
 });
 
 test("failing or silent run commands gather undefined", async () => {
@@ -116,9 +168,10 @@ test("failing or silent run commands gather undefined", async () => {
 test("each distinct run command runs once", async (t) => {
   const directory = await createDirectory(t);
   const command = `echo x >> ${join(directory, "count")}; printf ok`;
-  const inputs = await gather({
-    rows: [[{ type: "run", command }], [{ type: "run", command }]],
-  });
+  const inputs = await gather(
+    { rows: [[{ type: "run", command }], [{ type: "run", command }]] },
+    { sourceOptions: { runTimeoutMs: RUN_TIMEOUT_MS } },
+  );
   assert.deepEqual(inputs.runOutputsByCommand, new Map([[command, "ok"]]));
   assert.equal(await readFile(join(directory, "count"), "utf8"), "x\n");
 });
@@ -158,17 +211,17 @@ test("run commands run concurrently", async () => {
   const start = performance.now();
   const inputs = await gather(
     layoutOf(
-      { type: "run", command: "sleep 0.3; printf a" },
-      { type: "run", command: "sleep 0.3; printf b" },
+      { type: "run", command: "sleep 0.6; printf a" },
+      { type: "run", command: "sleep 0.6; printf b" },
     ),
-    { sourceOptions: { runTimeoutMs: 2_000 } },
+    { sourceOptions: { runTimeoutMs: RUN_TIMEOUT_MS } },
   );
-  assert.ok(performance.now() - start < 550);
+  assert.ok(performance.now() - start < 1_100);
   assert.deepEqual(
     inputs.runOutputsByCommand,
     new Map([
-      ["sleep 0.3; printf a", "a"],
-      ["sleep 0.3; printf b", "b"],
+      ["sleep 0.6; printf a", "a"],
+      ["sleep 0.6; printf b", "b"],
     ]),
   );
 });
@@ -248,6 +301,16 @@ test("falls back to the global emotion cache", async (t) => {
   const payload = PayloadParser.parse(JSON.stringify({ session_id: "s2" }));
   const missingSession = await gather(layoutOf({ type: "emotion" }), { configDir, payload });
   assert.deepEqual(missingSession.emotion, expected);
+});
+
+test("a session id that is not a plain name falls back to the global emotion cache", async (t) => {
+  const configDir = await createDirectory(t);
+  await writeEmotion(configDir, "claude-emotion.json", JSON.stringify({ emotion: "calm" }));
+  // Joined naively, this session id resolves to cache/x.json.
+  await writeEmotion(configDir, "x.json", JSON.stringify({ emotion: "happy" }));
+  const payload = PayloadParser.parse(JSON.stringify({ session_id: "../../x" }));
+  const inputs = await gather(layoutOf({ type: "emotion" }), { configDir, payload });
+  assert.deepEqual(inputs.emotion, { name: "calm", modifiedSeconds: EMOTION_MODIFIED_SECONDS });
 });
 
 test("malformed or emotion-less cache gives no emotion", async (t) => {

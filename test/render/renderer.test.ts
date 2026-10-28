@@ -267,5 +267,4 @@ test("run segment renders the gathered output", () => {
   assert.equal(render(new Map([["x", output]])), `${output}\n`);
   assert.equal(render(new Map()), "");
   assert.equal(render(new Map([["x", undefined]])), "");
-  assert.equal(render(new Map([["x", ""]])), "");
 });
