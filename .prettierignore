@@ -1,2 +1,5 @@
-test/cli/fixtures/
-test/cli/golden/
+node_modules
+dist
+.superpowers
+docs
+test/cli/fixtures
