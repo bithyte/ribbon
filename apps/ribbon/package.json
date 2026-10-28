@@ -2,7 +2,7 @@
   "name": "@bithyte/ribbon",
   "version": "0.1.0",
   "description": "Configurable status line for Claude Code",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "bin": {
     "ribbon": "dist/cli.mjs"
   },
