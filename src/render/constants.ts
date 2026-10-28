@@ -102,3 +102,13 @@ export const EMOTION_COLORS_BY_NAME: ReadonlyMap<string, string> = new Map([
   ["calm", TEAL],
   ["unknown", DIM],
 ]);
+
+export const GIT_BRANCH_HEAD_PREFIX = "# branch.head ";
+export const GIT_BRANCH_OID_PREFIX = "# branch.oid ";
+export const GIT_DETACHED_HEAD = "(detached)";
+export const GIT_DETACHED_LABEL = "detached@";
+export const GIT_SHORT_OID_LENGTH = 7;
+/** Status field character meaning no change on that side. */
+export const GIT_UNCHANGED_FLAG = ".";
+export const GIT_CLEAN_MARK = "✓";
+export const GIT_DIRTY_MARK = "✗";

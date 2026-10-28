@@ -24,6 +24,7 @@ import {
   SEVEN_DAY_LABEL,
   SEVEN_DAY_WINDOW_SECONDS,
 } from "./constants.ts";
+import { GitStatus } from "./git.ts";
 import { RenderFormat } from "./format.ts";
 import type { RenderInputs } from "./types.ts";
 
@@ -54,8 +55,7 @@ export class RenderSegments {
       case "sevenDay":
         return RenderSegments.renderSevenDay(inputs);
       case "git":
-        // Not ported yet.
-        return undefined;
+        return RenderSegments.renderGit(inputs);
     }
   }
 
@@ -175,6 +175,10 @@ export class RenderSegments {
       RenderFormat.paceColor(percent, elapsedPercent, SEVEN_DAY_AHEAD_COLOR),
       usage,
     );
+  }
+
+  private static renderGit(inputs: RenderInputs): string | undefined {
+    return inputs.gitStatus === undefined ? undefined : GitStatus.describe(inputs.gitStatus);
   }
 
   private static renderRun(command: string, inputs: RenderInputs): string | undefined {

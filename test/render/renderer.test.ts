@@ -89,12 +89,6 @@ test("skips rows where every segment drops out", () => {
   );
 });
 
-test("drops segments implemented in later tasks", () => {
-  const inputs = createInputs({});
-  const layout = { rows: [[{ type: "git" }]] as const };
-  assert.equal(Renderer.render(layout, { ...inputs, gitStatus: "# branch.head main\n" }), "");
-});
-
 test("empty layout renders nothing", () => {
   assert.equal(Renderer.render({ rows: [] }, createInputs({})), "");
   assert.equal(Renderer.render({ rows: [[]] }, createInputs({})), "");
